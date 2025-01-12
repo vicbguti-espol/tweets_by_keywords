@@ -1,0 +1,10 @@
+{
+    "keywords": [
+        "seguridad guayaquil"
+    ],
+    "browser_settings": {
+        "headless": false,
+        "tweets_per_keyword": 100
+    },
+    "cookie_file": "twitter_cookies.pkl"
+}
