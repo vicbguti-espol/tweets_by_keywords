@@ -31,8 +31,14 @@ def main():
             logging.error("Failed to load cookies")
             return
 
+        # Load and parse keywords
+        keywords = extractor.parse_keywords(config["keyword_file"])
+        if not keywords:
+            logging.error("No keywords found")
+            return
+
         # Search keywords
-        for keyword in config["keywords"]:
+        for keyword in keywords:
             logging.info(f"Searching for: {keyword}")
             tweets = extractor.search_and_extract(
                 browser.driver,

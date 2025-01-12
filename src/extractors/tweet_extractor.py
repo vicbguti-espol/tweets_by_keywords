@@ -159,3 +159,13 @@ class TweetExtractor:
         except Exception as e:
             logging.error(f"Error in search_and_extract: {e}")
             return tweets
+
+    def parse_keywords(self, keyword_file: str) -> list:
+        """Parse keywords from file with line breaks"""
+        try:
+            with open(keyword_file, "r", encoding="utf-8") as f:
+                keywords = [line.strip() for line in f.readlines() if line.strip()]
+            return keywords
+        except Exception as e:
+            logging.error(f"Error reading keywords file: {e}")
+            return []
