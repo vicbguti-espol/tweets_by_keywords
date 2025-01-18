@@ -11,6 +11,7 @@ class Tweet:
     timestamp: str  # Tweet's original timestamp
     collection_time: str  # When we collected it
     engagement: Dict[str, str] = None
+    parent_tweet_url: str = None  # For tracking comment relationships
 
     def __post_init__(self):
         if not self.engagement:

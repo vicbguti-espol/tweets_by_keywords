@@ -2,7 +2,7 @@
     "keyword_file": "config/keywords.txt",
     "browser_settings": {
         "headless": false,
-        "tweets_per_keyword": 100
+        "tweets_per_keyword": 1000
     },
     "cookie_file": "twitter_cookies.pkl"
 }

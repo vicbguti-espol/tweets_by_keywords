@@ -68,126 +68,115 @@ class SearcherDriver:
 
 class Browser:
     def __init__(self):
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+        )
         self.options = Options()
-        # Remove headless mode
         self.options.add_argument("--start-maximized")
         self.options.add_argument("--disable-notifications")
         self.driver = webdriver.Chrome(options=self.options)
+        self.cookie_dir = os.path.join("data", "cookies")
+        self.cookie_path = os.path.join(self.cookie_dir, "twitter_cookies.pkl")
+        os.makedirs(self.cookie_dir, exist_ok=True)
+        self.authenticate()
 
-    def setup_logging(self):
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(levelname)s - %(message)s",
-            handlers=[logging.StreamHandler(sys.stdout)],
-        )
+    def authenticate(self):
+        logging.info("Starting authentication process...")
+        if self.try_cookie_auth():
+            return True
+        return self.try_manual_auth()
 
-    def manual_login(self, credentials_file, max_retries=3):
-        try:
-            with open(credentials_file) as f:
-                creds = json.load(f)
-
-            self.driver.get("https://twitter.com/i/flow/login")
-            time.sleep(3)
-
-            for attempt in range(max_retries):
-                try:
-                    # Find and fill username
-                    logging.info("Waiting for username field...")
-                    username_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located(
-                            (By.CSS_SELECTOR, 'input[autocomplete="username"]')
-                        )
-                    )
-                    username_input.clear()
-                    username_input.send_keys(creds["username"])
-                    username_input.send_keys(
-                        Keys.ENTER
-                    )  # Use Enter instead of Next button
-                    time.sleep(2)
-
-                    # Find and fill password
-                    logging.info("Waiting for password field...")
-                    password_input = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located(
-                            (By.CSS_SELECTOR, 'input[type="password"]')
-                        )
-                    )
-                    password_input.clear()
-                    password_input.send_keys(creds["password"])
-                    password_input.send_keys(
-                        Keys.ENTER
-                    )  # Use Enter instead of Login button
-                    time.sleep(5)
-
-                    # Verify login
-                    WebDriverWait(self.driver, 10).until(
-                        lambda driver: "twitter.com/home" in driver.current_url
-                    )
-
-                    logging.info("Login successful!")
-                    self.save_cookies()
-                    return True
-
-                except Exception as e:
-                    logging.warning(f"Login attempt {attempt + 1} failed: {str(e)}")
-                    if attempt == max_retries - 1:
-                        raise
-                    time.sleep(2)
-                    continue
-
+    def try_cookie_auth(self):
+        if not os.path.exists(self.cookie_path):
             return False
 
-        except Exception as e:
-            logging.error(f"Login failed: {str(e)}")
-            return False
-
-    def save_cookies(self):
-        cookie_path = os.path.join("data", "cookies", "twitter_cookies.pkl")
-        with open(cookie_path, "wb") as f:
-            pickle.dump(self.driver.get_cookies(), f)
-        logging.info("Saved new cookies")
-
-    def load_cookies(self, cookie_file: str):
         try:
-            # Load Twitter homepage first
-            logging.info("Loading Twitter homepage...")
             self.driver.get("https://twitter.com")
             time.sleep(3)
 
-            # Load and apply cookies
-            logging.info("Loading cookies from file...")
-            with open(cookie_file, "rb") as f:
+            with open(self.cookie_path, "rb") as f:
                 cookies = pickle.load(f)
                 for cookie in cookies:
-                    try:
-                        self.driver.add_cookie(cookie)
-                        logging.info(f"Added cookie: {cookie.get('name')}")
-                    except Exception as e:
-                        logging.warning(
-                            f"Failed to add cookie {cookie.get('name')}: {e}"
-                        )
+                    self.driver.add_cookie(cookie)
 
-            # Refresh and verify auth state
-            logging.info("Verifying authentication...")
             self.driver.get("https://twitter.com/home")
-            time.sleep(3)
+            time.sleep(5)
 
-            # Check if we're actually logged in by looking for logout button
-            try:
-                WebDriverWait(self.driver, 5).until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, 'a[data-testid="AppTabBar_Profile_Link"]')
-                    )
-                )
+            if self.is_logged_in():
                 logging.info("Successfully authenticated with cookies")
                 return True
-            except:
-                logging.error("Cookie authentication failed")
-                return False
+
+            logging.info("Cookie authentication failed")
+            os.remove(self.cookie_path)
+            return False
 
         except Exception as e:
-            logging.error(f"Error loading cookies: {e}")
+            logging.error(f"Cookie auth error: {e}")
             return False
+
+    def try_manual_auth(self):
+        credentials_path = os.path.join("config", "credentials.json")
+        if not os.path.exists(credentials_path):
+            raise Exception("No credentials file found")
+
+        try:
+            with open(credentials_path) as f:
+                creds = json.load(f)
+
+            self.driver.get("https://twitter.com/i/flow/login")
+            time.sleep(5)
+
+            # Enter username
+            username = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, 'input[autocomplete="username"]')
+                )
+            )
+            username.send_keys(creds["username"])
+            username.send_keys(Keys.ENTER)
+            time.sleep(3)
+
+            # Enter password
+            password = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, 'input[type="password"]')
+                )
+            )
+            password.send_keys(creds["password"])
+            password.send_keys(Keys.ENTER)
+            time.sleep(5)
+
+            if self.is_logged_in():
+                logging.info("Manual login successful")
+                self.save_cookies()
+                return True
+
+            logging.error("Manual login failed")
+            return False
+
+        except Exception as e:
+            logging.error(f"Manual auth error: {e}")
+            return False
+
+    def is_logged_in(self):
+        try:
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, 'a[data-testid="AppTabBar_Home_Link"]')
+                )
+            )
+            return True
+        except:
+            return False
+
+    def save_cookies(self):
+        try:
+            cookies = self.driver.get_cookies()
+            with open(self.cookie_path, "wb") as f:
+                pickle.dump(cookies, f)
+            logging.info("Cookies saved successfully")
+        except Exception as e:
+            logging.error(f"Failed to save cookies: {e}")
 
     def close(self):
         self.driver.close()
